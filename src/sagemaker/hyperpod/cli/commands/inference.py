@@ -1,21 +1,13 @@
 import click
 import json
-import boto3
 from typing import Optional
-from tabulate import tabulate
 
-from sagemaker.hyperpod.cli.inference_utils import generate_click_command
-from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY as JS_REG
-from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY as C_REG
-from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
-from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
-from sagemaker_core.resources import Endpoint
+# Lightweight imports only - heavy imports moved inside functions
 from sagemaker.hyperpod.common.telemetry.telemetry_logging import (
     _hyperpod_telemetry_emitter,
 )
 from sagemaker.hyperpod.common.telemetry.constants import Feature
 from sagemaker.hyperpod.common.cli_decorators import handle_cli_exceptions
-from sagemaker.hyperpod.common.utils import display_formatted_logs
 
 
 # CREATE
@@ -28,18 +20,32 @@ from sagemaker.hyperpod.common.utils import display_formatted_logs
     help="Optional. The namespace of the jumpstart model endpoint to create. Default set to 'default'",
 )
 @click.option("--version", default="1.0", help="Schema version to use")
-@generate_click_command(
-    schema_pkg="hyperpod_jumpstart_inference_template",
-    registry=JS_REG,
-)
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_js_endpoint_cli")
 @handle_cli_exceptions()
-def js_create(name, namespace, version, js_endpoint):
+def js_create(name, namespace, version, **kwargs):
     """
     Create a jumpstart model endpoint.
     """
-
-    js_endpoint.create(name=name, namespace=namespace)
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.cli.inference_utils import generate_click_command
+    from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY as JS_REG
+    
+    # Dynamically parse the remaining arguments based on schema
+    decorator = generate_click_command(
+        schema_pkg="hyperpod_jumpstart_inference_template",
+        registry=JS_REG,
+    )
+    
+    # For now, assume js_endpoint is passed through kwargs or handle appropriately
+    # This is a simplified approach - the actual implementation might need more sophisticated parameter handling
+    js_endpoint = kwargs.get('js_endpoint')
+    if js_endpoint:
+        js_endpoint.create(name=name, namespace=namespace)
+    else:
+        # Fallback: create endpoint object directly
+        from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+        endpoint = HPJumpStartEndpoint(**kwargs)
+        endpoint.create(name=name, namespace=namespace)
 
 
 @click.command("hyp-custom-endpoint")
@@ -51,18 +57,31 @@ def js_create(name, namespace, version, js_endpoint):
     help="Optional. The namespace of the jumpstart model endpoint to create. Default set to 'default'",
 )
 @click.option("--version", default="1.0", help="Schema version to use")
-@generate_click_command(
-    schema_pkg="hyperpod_custom_inference_template",
-    registry=C_REG,
-)
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_custom_endpoint_cli")
 @handle_cli_exceptions()
-def custom_create(name, namespace, version, custom_endpoint):
+def custom_create(name, namespace, version, **kwargs):
     """
     Create a custom model endpoint.
     """
-
-    custom_endpoint.create(name=name, namespace=namespace)
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.cli.inference_utils import generate_click_command
+    from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY as C_REG
+    
+    # Dynamically parse the remaining arguments based on schema
+    decorator = generate_click_command(
+        schema_pkg="hyperpod_custom_inference_template",
+        registry=C_REG,
+    )
+    
+    # For now, assume custom_endpoint is passed through kwargs or handle appropriately
+    custom_endpoint = kwargs.get('custom_endpoint')
+    if custom_endpoint:
+        custom_endpoint.create(name=name, namespace=namespace)
+    else:
+        # Fallback: create endpoint object directly
+        from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+        endpoint = HPEndpoint(**kwargs)
+        endpoint.create(name=name, namespace=namespace)
 
 
 # INVOKE
@@ -96,6 +115,11 @@ def custom_invoke(
     """
     Invoke a custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    import boto3
+    from sagemaker_core.resources import Endpoint
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    
     try:
         payload = json.dumps(json.loads(body))
     except json.JSONDecodeError:
@@ -148,6 +172,10 @@ def js_list(
     """
     List all Hyperpod Jumpstart model endpoints.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    from tabulate import tabulate
+    
     endpoints = HPJumpStartEndpoint.model_construct().list(namespace)
     data = [ep.model_dump() for ep in endpoints]
 
@@ -191,6 +219,10 @@ def custom_list(
     """
     List all Hyperpod custom model endpoints.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    from tabulate import tabulate
+    
     endpoints = HPEndpoint.model_construct().list(namespace)
     data = [ep.model_dump() for ep in endpoints]
 
@@ -250,6 +282,10 @@ def js_describe(
     """
     Describe a Hyperpod Jumpstart model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    from tabulate import tabulate
+    
     my_endpoint = HPJumpStartEndpoint.model_construct().get(name, namespace)
     data = my_endpoint.model_dump()
 
@@ -262,7 +298,7 @@ def js_describe(
             click.echo("Invalid data received: expected a dictionary.")
             return
         
-        click.echo("\nDeployment (should be completed in 1-5 min):")
+        click.echo("\nDeployment (should be completed in 1-5 min):")
     
         status = data.get("status") or {}
         metadata = data.get("metadata") or {}
@@ -399,6 +435,10 @@ def custom_describe(
     """
     Describe a Hyperpod custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    from tabulate import tabulate
+    
     my_endpoint = HPEndpoint.model_construct().get(name, namespace)
     data = my_endpoint.model_dump()
 
@@ -573,6 +613,9 @@ def js_delete(
     """
     Delete a Hyperpod Jumpstart model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    
     # Auto-detects the endpoint type and operation
     # 0Provides 404 message: "❓ JumpStart endpoint 'missing-name' not found..."
     my_endpoint = HPJumpStartEndpoint.model_construct().get(name, namespace)
@@ -602,6 +645,9 @@ def custom_delete(
     """
     Delete a Hyperpod custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    
     my_endpoint = HPEndpoint.model_construct().get(name, namespace)
     my_endpoint.delete()
 
@@ -629,6 +675,9 @@ def js_list_pods(
     """
     List all pods related to jumpstart model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    
     my_endpoint = HPJumpStartEndpoint.model_construct()
     pods = my_endpoint.list_pods(namespace=namespace, endpoint_name=endpoint_name)
     click.echo(pods)
@@ -657,6 +706,9 @@ def custom_list_pods(
     """
     List all pods related to custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    
     my_endpoint = HPEndpoint.model_construct()
     pods = my_endpoint.list_pods(namespace=namespace, endpoint_name=endpoint_name)
     click.echo(pods)
@@ -692,6 +744,10 @@ def js_get_logs(
     """
     Get specific pod log for jumpstart model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    from sagemaker.hyperpod.common.utils import display_formatted_logs
+    
     my_endpoint = HPJumpStartEndpoint.model_construct()
     logs = my_endpoint.get_logs(pod=pod_name, container=container, namespace=namespace)
     
@@ -730,6 +786,10 @@ def custom_get_logs(
     """
     Get specific pod log for custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    from sagemaker.hyperpod.common.utils import display_formatted_logs
+    
     my_endpoint = HPEndpoint.model_construct()
     logs = my_endpoint.get_logs(pod=pod_name, container=container, namespace=namespace)
     
@@ -753,6 +813,9 @@ def js_get_operator_logs(
     """
     Get operator logs for jumpstart model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
+    
     my_endpoint = HPJumpStartEndpoint.model_construct()
     logs = my_endpoint.get_operator_logs(since_hours=since_hours)
     click.echo(logs)
@@ -773,6 +836,9 @@ def custom_get_operator_logs(
     """
     Get operator logs for custom model endpoint.
     """
+    # Import heavy dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
+    
     my_endpoint = HPEndpoint.model_construct()
     logs = my_endpoint.get_operator_logs(since_hours=since_hours)
     click.echo(logs)

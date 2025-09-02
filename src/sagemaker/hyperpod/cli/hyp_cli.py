@@ -3,49 +3,19 @@ import yaml
 import json
 import os
 import subprocess
+from functools import partial
 from pydantic import BaseModel, ValidationError, Field
 from typing import Optional, Union
 from importlib.metadata import version, PackageNotFoundError
 
-from sagemaker.hyperpod.cli.commands.cluster import list_cluster, set_cluster_context, get_cluster_context, \
-    get_monitoring
-from sagemaker.hyperpod.cli.commands.cluster_stack import create_cluster_stack, describe_cluster_stack, \
-    list_cluster_stacks, update_cluster
-from sagemaker.hyperpod.cli.commands.training import (
-    pytorch_create,
-    list_jobs,
-    pytorch_describe,
-    pytorch_delete,
-    pytorch_list_pods,
-    pytorch_get_logs,
-    pytorch_get_operator_logs,
-    pytorch_exec,
-)
-from sagemaker.hyperpod.cli.commands.inference import (
-    js_create,
-    custom_create,
-    custom_invoke,
-    js_list,
-    custom_list,
-    js_describe,
-    custom_describe,
-    js_delete,
-    custom_delete,
-    js_list_pods,
-    custom_list_pods,
-    js_get_logs,
-    custom_get_logs,
-    js_get_operator_logs,
-    custom_get_operator_logs,
+# Lazy loading infrastructure
+from sagemaker.hyperpod.common.lazy_loading import (
+    create_lazy_group, 
+    create_lazy_cli_command,
+    create_lazy_top_level_cli
 )
 
-from sagemaker.hyperpod.cli.commands.init import (
-    init,
-    reset,
-    configure,
-    validate,
-    _default_create
-)
+# ALL command imports removed - now using complete lazy loading
 
 
 @click.group(context_settings={'max_content_width': 200})
@@ -71,7 +41,11 @@ def print_version(ctx, param, value):
     ctx.exit()
 
 
-@click.group(context_settings={'max_content_width': 200})
+# Main CLI with complete lazy loading - handles both subgroups and top-level commands
+@click.group(
+    cls=create_lazy_top_level_cli,
+    context_settings={'max_content_width': 200}
+)
 @click.option('--version', is_flag=True, callback=print_version, expose_value=False, is_eager=True, help='Show version information')
 def cli():
     pass
@@ -95,7 +69,11 @@ class CLICommand(click.Group):
         return super().parse_args(ctx, args)
 
 
-@cli.group(cls=CLICommand, default_cmd='_default_create')
+# Lazy loading create group - imports commands only when executed, not for help
+# Uses LazyCLICommand to preserve default_cmd='_default_create' behavior
+LazyCreateGroup = partial(create_lazy_cli_command, 'create')
+
+@cli.group(cls=LazyCreateGroup)
 def create():
     """
     Create endpoints, pytorch jobs or cluster stacks.
@@ -112,107 +90,100 @@ def create():
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading list group - imports commands only when executed, not for help
+LazyListGroup = partial(create_lazy_group, 'list')
+
+@cli.group(cls=LazyListGroup)
 def list():
     """List endpoints, pytorch jobs or cluster stacks."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading describe group - imports commands only when executed, not for help
+LazyDescribeGroup = partial(create_lazy_group, 'describe')
+
+@cli.group(cls=LazyDescribeGroup)
 def describe():
     """Describe endpoints, pytorch jobs or cluster stacks."""
     pass
 
-@cli.group(cls=CLICommand)
-def update():
-    """Update an existing HyperPod cluster configuration."""
-    pass
 
-@cli.group(cls=CLICommand)
+# Lazy loading delete group - imports commands only when executed, not for help
+LazyDeleteGroup = partial(create_lazy_group, 'delete')
+
+@cli.group(cls=LazyDeleteGroup)
 def delete():
     """Delete endpoints or pytorch jobs."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading update group - imports commands only when executed, not for help
+LazyUpdateGroup = partial(create_lazy_group, 'update')
+
+@cli.group(cls=LazyUpdateGroup)
+def update():
+    """Update an existing HyperPod cluster configuration."""
+    pass
+
+
+# Lazy loading list_pods group - imports commands only when executed, not for help
+LazyListPodsGroup = partial(create_lazy_group, 'list_pods')
+
+@cli.group(cls=LazyListPodsGroup)
 def list_pods():
     """List pods for endpoints or pytorch jobs."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading get_logs group - imports commands only when executed, not for help
+LazyGetLogsGroup = partial(create_lazy_group, 'get_logs')
+
+@cli.group(cls=LazyGetLogsGroup)
 def get_logs():
     """Get pod logs for endpoints or pytorch jobs."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading invoke group - imports commands only when executed, not for help
+LazyInvokeGroup = partial(create_lazy_group, 'invoke')
+
+@cli.group(cls=LazyInvokeGroup)
 def invoke():
     """Invoke model endpoints."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading get_operator_logs group - imports commands only when executed, not for help
+LazyGetOperatorLogsGroup = partial(create_lazy_group, 'get_operator_logs')
+
+@cli.group(cls=LazyGetOperatorLogsGroup)
 def get_operator_logs():
     """Get operator logs for endpoints."""
     pass
 
 
-@cli.group(cls=CLICommand)
+# Lazy loading exec group - imports commands only when executed, not for help
+LazyExecGroup = partial(create_lazy_group, 'exec')
+
+@cli.group(cls=LazyExecGroup)
 def exec():
     """Execute commands in pods for endpoints or pytorch jobs."""
     pass
 
 
-cli.add_command(init)
-cli.add_command(reset)
-cli.add_command(configure)
-cli.add_command(validate)
+# ALL COMMANDS NOW USE COMPLETE LAZY LOADING!
+# No manual add_command calls needed - everything auto-discovered from registry:
+# 
+# Top-level commands (lazy loaded from registry):
+# - init, reset, configure, validate
+# - list-cluster, set-cluster-context, get-cluster-context, get-monitoring
+#
+# Groups (lazy loaded from registry):
+# - create, list, describe, delete, update 
+# - list-pods, get-logs, invoke, get-operator-logs, exec
+#
+# All 36+ commands across all groups now use lazy loading!
 
-create.add_command(pytorch_create)
-create.add_command(js_create)
-create.add_command(custom_create)
-_default_create.hidden = True
-create.add_command(_default_create)
-
-list.add_command(list_jobs)
-list.add_command(js_list)
-list.add_command(custom_list)
-list.add_command(list_cluster_stacks)
-
-describe.add_command(pytorch_describe)
-describe.add_command(js_describe)
-describe.add_command(custom_describe)
-describe.add_command(describe_cluster_stack)
-
-update.add_command(update_cluster)
-
-delete.add_command(pytorch_delete)
-delete.add_command(js_delete)
-delete.add_command(custom_delete)
-
-list_pods.add_command(pytorch_list_pods)
-list_pods.add_command(js_list_pods)
-list_pods.add_command(custom_list_pods)
-
-get_logs.add_command(pytorch_get_logs)
-get_logs.add_command(js_get_logs)
-get_logs.add_command(custom_get_logs)
-
-get_operator_logs.add_command(pytorch_get_operator_logs)
-get_operator_logs.add_command(js_get_operator_logs)
-get_operator_logs.add_command(custom_get_operator_logs)
-
-invoke.add_command(custom_invoke)
-invoke.add_command(custom_invoke, name="hyp-jumpstart-endpoint")
-
-cli.add_command(list_cluster)
-cli.add_command(set_cluster_context)
-cli.add_command(get_cluster_context)
-cli.add_command(get_monitoring)
-# cli.add_command(create_cluster_stack) # Not supported yet
-
-exec.add_command(pytorch_exec)
 
 if __name__ == "__main__":
     cli()
