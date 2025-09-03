@@ -3,19 +3,37 @@ import pkgutil
 import click
 from typing import Callable, Optional, Mapping, Type
 import sys
-from sagemaker.hyperpod.cli.common_utils import extract_version_from_args, get_latest_version, load_schema_for_version
+from sagemaker.hyperpod.cli.common_utils import extract_version_from_args, get_latest_version, get_cached_schema
 
 
 def generate_click_command(
     *,
-    schema_pkg: str = "hyperpod_jumpstart_inference_template",
+    schema_registry: Mapping[str, Type] = None,
+    template_name: str = None,
+    # Keep backward compatibility with old parameters
+    schema_pkg: str = None,
     registry: Mapping[str, Type] = None,
 ) -> Callable:
-    if registry is None:
-        raise ValueError("You must pass a registry mapping version→Model")
+    
+    # Handle backward compatibility
+    if registry is not None and schema_registry is None:
+        schema_registry = registry
+    if schema_pkg is not None and template_name is None:
+        # Extract template name from schema_pkg
+        if "jumpstart" in schema_pkg:
+            template_name = "hyp-jumpstart-endpoint" 
+        elif "custom" in schema_pkg:
+            template_name = "hyp-custom-endpoint"
+        else:
+            template_name = schema_pkg
+            
+    if schema_registry is None:
+        raise ValueError("You must pass a schema_registry mapping version→Model")
+    if template_name is None:
+        raise ValueError("You must pass a template_name")
 
-    default_version = get_latest_version(registry)
-    version = extract_version_from_args(registry, schema_pkg, default_version)
+    default_version = get_latest_version(schema_registry)
+    version = extract_version_from_args(schema_registry, template_name, default_version)
 
     def decorator(func: Callable) -> Callable:
         # Parser for the single JSON‐dict env var flag
@@ -33,7 +51,7 @@ def generate_click_command(
             name = kwargs.pop("metadata_name", None)
             pop_version = kwargs.pop("version", "1.0")
 
-            Model = registry.get(version)
+            Model = schema_registry.get(version)
             if Model is None:
                 raise click.ClickException(f"Unsupported schema version: {version}")
 
@@ -41,8 +59,12 @@ def generate_click_command(
             domain = flat.to_domain()
             return func(name, namespace, version, domain)
 
-        # 2) inject the special JSON‐env flag before everything else
-        schema = load_schema_for_version(version, schema_pkg)
+        # 2) LAZY SCHEMA LOADING: Load schema only at command execution, not at decorator time
+        # This prevents expensive template imports during CLI help generation
+        def get_schema_lazily():
+            return get_cached_schema(schema_registry, template_name, version)
+
+        schema = get_schema_lazily()
         props = schema.get("properties", {})
 
         json_flags = {
@@ -79,7 +101,7 @@ def generate_click_command(
             # infer click type
             if "enum" in spec:
                 ctype = click.Choice(spec["enum"])
-            if spec.get("type") == "integer":
+            elif spec.get("type") == "integer":
                 ctype = int
             elif spec.get("type") == "number":
                 ctype = float

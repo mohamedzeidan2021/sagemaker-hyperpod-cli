@@ -2,7 +2,12 @@ import click
 import json
 from typing import Optional
 
-# Lightweight imports only - heavy imports moved inside functions
+# Import needed for schema-based command generation  
+from sagemaker.hyperpod.cli.inference_utils import generate_click_command
+from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY as JS_REG
+from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY as C_REG
+
+# Lightweight imports only - heavy SDK imports moved inside functions
 from sagemaker.hyperpod.common.telemetry.telemetry_logging import (
     _hyperpod_telemetry_emitter,
 )
@@ -20,32 +25,20 @@ from sagemaker.hyperpod.common.cli_decorators import handle_cli_exceptions
     help="Optional. The namespace of the jumpstart model endpoint to create. Default set to 'default'",
 )
 @click.option("--version", default="1.0", help="Schema version to use")
+@generate_click_command(
+    schema_registry=JS_REG,
+    template_name="hyp-jumpstart-endpoint",
+)
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_js_endpoint_cli")
 @handle_cli_exceptions()
-def js_create(name, namespace, version, **kwargs):
+def js_create(namespace, version, js_endpoint):
     """
     Create a jumpstart model endpoint.
     """
-    # Import heavy dependencies only when function is executed
-    from sagemaker.hyperpod.cli.inference_utils import generate_click_command
-    from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY as JS_REG
+    # Import heavy SDK dependencies only when function is executed
+    from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
     
-    # Dynamically parse the remaining arguments based on schema
-    decorator = generate_click_command(
-        schema_pkg="hyperpod_jumpstart_inference_template",
-        registry=JS_REG,
-    )
-    
-    # For now, assume js_endpoint is passed through kwargs or handle appropriately
-    # This is a simplified approach - the actual implementation might need more sophisticated parameter handling
-    js_endpoint = kwargs.get('js_endpoint')
-    if js_endpoint:
-        js_endpoint.create(name=name, namespace=namespace)
-    else:
-        # Fallback: create endpoint object directly
-        from sagemaker.hyperpod.inference.hp_jumpstart_endpoint import HPJumpStartEndpoint
-        endpoint = HPJumpStartEndpoint(**kwargs)
-        endpoint.create(name=name, namespace=namespace)
+    js_endpoint.create(namespace=namespace)
 
 
 @click.command("hyp-custom-endpoint")
@@ -54,34 +47,23 @@ def js_create(name, namespace, version, **kwargs):
     type=click.STRING,
     required=False,
     default="default",
-    help="Optional. The namespace of the jumpstart model endpoint to create. Default set to 'default'",
+    help="Optional. The namespace of the custom model endpoint to create. Default set to 'default'",
 )
 @click.option("--version", default="1.0", help="Schema version to use")
+@generate_click_command(
+    schema_registry=C_REG,
+    template_name="hyp-custom-endpoint",
+)
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_custom_endpoint_cli")
 @handle_cli_exceptions()
-def custom_create(name, namespace, version, **kwargs):
+def custom_create(namespace, version, custom_endpoint):
     """
     Create a custom model endpoint.
     """
-    # Import heavy dependencies only when function is executed
-    from sagemaker.hyperpod.cli.inference_utils import generate_click_command
-    from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY as C_REG
+    # Import heavy SDK dependencies only when function is executed  
+    from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
     
-    # Dynamically parse the remaining arguments based on schema
-    decorator = generate_click_command(
-        schema_pkg="hyperpod_custom_inference_template",
-        registry=C_REG,
-    )
-    
-    # For now, assume custom_endpoint is passed through kwargs or handle appropriately
-    custom_endpoint = kwargs.get('custom_endpoint')
-    if custom_endpoint:
-        custom_endpoint.create(name=name, namespace=namespace)
-    else:
-        # Fallback: create endpoint object directly
-        from sagemaker.hyperpod.inference.hp_endpoint import HPEndpoint
-        endpoint = HPEndpoint(**kwargs)
-        endpoint.create(name=name, namespace=namespace)
+    custom_endpoint.create(namespace=namespace)
 
 
 # INVOKE

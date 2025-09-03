@@ -1,7 +1,11 @@
 import click
 from typing import Optional
 
-# Lightweight imports only - heavy imports moved inside functions
+# Import needed for schema-based command generation
+from sagemaker.hyperpod.cli.training_utils import generate_click_command
+from hyperpod_pytorch_job_template.registry import SCHEMA_REGISTRY
+
+# Lightweight imports only - heavy SDK imports moved inside functions
 from sagemaker.hyperpod.common.telemetry.telemetry_logging import (
     _hyperpod_telemetry_emitter,
 )
@@ -12,30 +16,49 @@ from sagemaker.hyperpod.common.cli_decorators import handle_cli_exceptions
 @click.command("hyp-pytorch-job")
 @click.option("--version", default="1.0", help="Schema version to use")
 @click.option("--debug", default=False, help="Enable debug mode")
+@generate_click_command(
+    schema_pkg="hyperpod_pytorch_job_template",
+    registry=SCHEMA_REGISTRY,
+)
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_pytorchjob_cli")
 @handle_cli_exceptions()
-def pytorch_create(version, debug, **kwargs):
+def pytorch_create(version, debug, config):
     """Create a PyTorch job."""
-    # Import heavy dependencies only when function is executed
+    # Import heavy SDK dependencies only when function is executed
     from sagemaker.hyperpod.training.hyperpod_pytorch_job import HyperPodPytorchJob
     from sagemaker.hyperpod.common.config import Metadata
-    from sagemaker.hyperpod.cli.training_utils import generate_click_command
-    from hyperpod_pytorch_job_template.registry import SCHEMA_REGISTRY
     
-    # Dynamically parse the remaining arguments based on schema (simplified approach for now)
-    # This is a simplified version - may need adjustment based on actual usage
     click.echo(f"Using version: {version}")
-    
-    # For now, create a basic job - this would need proper parameter handling
-    # based on the actual schema when the decorator was used
-    job_kwargs = {}
-    if 'name' in kwargs:
-        metadata_kwargs = {"name": kwargs['name']}
-        if 'namespace' in kwargs:
-            metadata_kwargs["namespace"] = kwargs['namespace']
-        job_kwargs["metadata"] = Metadata(**metadata_kwargs)
-    
-    # Create job with simplified parameters
+    job_name = config.get("name")
+    namespace = config.get("namespace")
+    spec = config.get("spec")
+    metadata_labels = config.get("labels")
+    annotations = config.get("annotations")
+
+    # Prepare metadata
+    metadata_kwargs = {"name": job_name}
+    if namespace:
+        metadata_kwargs["namespace"] = namespace
+    if metadata_labels:
+        metadata_kwargs["labels"] = metadata_labels
+    if annotations:
+        metadata_kwargs["annotations"] = annotations
+
+    # Prepare job kwargs
+    job_kwargs = {
+        "metadata": Metadata(**metadata_kwargs),
+        "replica_specs": spec.get("replica_specs"),
+    }
+
+    # Add nproc_per_node if present
+    if "nproc_per_node" in spec:
+        job_kwargs["nproc_per_node"] = spec.get("nproc_per_node")
+
+    # Add run_policy if present
+    if "run_policy" in spec:
+        job_kwargs["run_policy"] = spec.get("run_policy")
+
+    # Create job
     job = HyperPodPytorchJob(**job_kwargs)
     job.create(debug=debug)
 
