@@ -16,6 +16,20 @@ logger = logging.getLogger(__name__)
 
 # Command Registry - Static definitions with no imports
 COMMAND_REGISTRY = {
+    # Subgroup definitions - help text for main CLI groups
+    'subgroups': {
+        'create': 'Create endpoints, pytorch jobs or cluster stacks.',
+        'list': 'List endpoints, pytorch jobs or cluster stacks.',
+        'describe': 'Describe endpoints, pytorch jobs or cluster stacks.',
+        'delete': 'Delete endpoints or pytorch jobs.',
+        'update': 'Update an existing HyperPod cluster configuration.',
+        'list-pods': 'List pods for endpoints or pytorch jobs.',
+        'get-logs': 'Get pod logs for endpoints or pytorch jobs.',
+        'invoke': 'Invoke model endpoints.',
+        'get-operator-logs': 'Get operator logs for endpoints.',
+        'exec': 'Execute commands in pods for endpoints or pytorch jobs.'
+    },
+    
     # List subcommands
     'list': {
         'hyp-pytorch-job': {
@@ -451,6 +465,41 @@ class LazyTopLevelCLI(click.Group):
         
         # Otherwise, let Click handle the subgroups normally
         return super().get_command(ctx, name)
+    
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """
+        Show help using static text from registry - no imports needed.
+        
+        This is the key fix for the help performance issue. Instead of calling
+        get_command() for every command (which triggers lazy imports), we use
+        static help text from the COMMAND_REGISTRY.
+        
+        Args:
+            ctx: Click context
+            formatter: Click help formatter
+        """
+        commands = []
+        
+        # Add subgroups from registry
+        subgroups = ['create', 'list', 'describe', 'delete', 'update', 
+                     'list-pods', 'get-logs', 'invoke', 'get-operator-logs', 'exec']
+        subgroup_help = COMMAND_REGISTRY.get('subgroups', {})
+        
+        for subgroup in subgroups:
+            help_text = subgroup_help.get(subgroup, f'{subgroup.title()} commands')
+            commands.append((subgroup, help_text))
+        
+        # Add individual top-level commands from registry
+        top_level_commands = COMMAND_REGISTRY.get('top_level', {})
+        for name, info in top_level_commands.items():
+            commands.append((name, info['help']))
+        
+        # Sort commands alphabetically
+        commands.sort(key=lambda x: x[0])
+        
+        if commands:
+            with formatter.section('Commands'):
+                formatter.write_dl(commands)
 
 
 def create_lazy_cli_command(registry_key: str, **kwargs) -> LazyCLICommand:
