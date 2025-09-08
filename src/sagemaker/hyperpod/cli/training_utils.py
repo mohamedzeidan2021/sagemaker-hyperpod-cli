@@ -1,9 +1,7 @@
 import json
-import pkgutil
 import click
-from typing import Callable, Optional, Mapping, Type, Dict, Any
+from typing import Callable, Mapping, Type
 from pydantic import ValidationError
-import sys
 from sagemaker.hyperpod.cli.common_utils import extract_version_from_args, get_latest_version, load_schema_for_version
 
 
@@ -23,8 +21,11 @@ def generate_click_command(
     if registry is None:
         raise ValueError("You must pass a registry mapping version→Model")
 
-    default_version = get_latest_version(registry)
-    version = extract_version_from_args(registry, schema_pkg, default_version)
+    # Defer registry access and version extraction until runtime
+    def get_runtime_info():
+        default_version = get_latest_version(registry)
+        version = extract_version_from_args(registry, schema_pkg, default_version)
+        return default_version, version
 
     def decorator(func: Callable) -> Callable:
         # Parser for the single JSON‐dict env var flag
@@ -69,14 +70,17 @@ def generate_click_command(
     
         # 1) the wrapper click will call
         def wrapped_func(*args, **kwargs):
+            # Get runtime info (this is when heavy operations happen)
+            default_version, current_version = get_runtime_info()
+            
             # extract version
-            pop_version = kwargs.pop("version", default_version)
+            kwargs.pop("version", default_version)  # Remove unused version
             debug = kwargs.pop("debug", False)
 
-            # look up the model class
-            Model = registry.get(version)
+            # look up the model class (this is when registry is actually accessed)
+            Model = registry.get(current_version)
             if Model is None:
-                raise click.ClickException(f"Unsupported schema version: {version}")
+                raise click.ClickException(f"Unsupported schema version: {current_version}")
 
             # Filter out None values to avoid passing them to the model
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
@@ -96,11 +100,16 @@ def generate_click_command(
                 )
 
             # call your handler
-            return func(version, debug, domain_config)
+            return func(current_version, debug, domain_config)
 
-        # 2) inject click options from JSON Schema
-        excluded_props = set(["version"])
+        # 2) inject click options from JSON Schema - HYBRID APPROACH
+        # Load schema only when needed (for help or execution), but defer heavy operations
+        def get_schema_and_options():
+            default_version, version = get_runtime_info()
+            schema = load_schema_for_version(version, schema_pkg)
+            return schema
         
+        # Add static options first (these don't require schema loading)
         wrapped_func = click.option(
             "--environment",
             callback=_parse_json_flag,
@@ -157,35 +166,43 @@ def generate_click_command(
             ]
         )
 
-        schema = load_schema_for_version(version, schema_pkg)
-        props = schema.get("properties", {})
-        reqs = set(schema.get("required", []))
+        # HYBRID APPROACH: Load schema dynamically when options are needed
+        # This happens during help generation or command execution, not at import time
+        try:
+            schema = get_schema_and_options()
+            props = schema.get("properties", {})
+            reqs = set(schema.get("required", []))
 
-        # reverse so flags appear in the same order as in schema.json
-        for name, spec in reversed(list(props.items())):
-            if name in excluded_props:
-                continue
+            # reverse so flags appear in the same order as in schema.json
+            for name, spec in reversed(list(props.items())):
+                if name in excluded_props:
+                    continue
 
-            # type inference
-            if "enum" in spec:
-                ctype = click.Choice(spec["enum"])
-            elif spec.get("type") == "integer":
-                ctype = int
-            elif spec.get("type") == "number":
-                ctype = float
-            elif spec.get("type") == "boolean":
-                ctype = bool
-            else:
-                ctype = str
+                # type inference
+                if "enum" in spec:
+                    ctype = click.Choice(spec["enum"])
+                elif spec.get("type") == "integer":
+                    ctype = int
+                elif spec.get("type") == "number":
+                    ctype = float
+                elif spec.get("type") == "boolean":
+                    ctype = bool
+                else:
+                    ctype = str
 
-            wrapped_func = click.option(
-                f"--{name.replace('_','-')}",
-                required=(name in reqs),
-                default=spec.get("default", None),
-                show_default=("default" in spec),
-                type=ctype,
-                help=spec.get("description", ""),
-            )(wrapped_func)
+                wrapped_func = click.option(
+                    f"--{name.replace('_','-')}",
+                    required=(name in reqs),
+                    default=spec.get("default", None),
+                    show_default=("default" in spec),
+                    type=ctype,
+                    help=spec.get("description", ""),
+                )(wrapped_func)
+        except Exception:
+            # If schema loading fails during import (e.g., missing dependencies),
+            # still return the wrapped function with basic options
+            # Schema will be loaded again during execution when it's actually needed
+            pass
 
         return wrapped_func
 

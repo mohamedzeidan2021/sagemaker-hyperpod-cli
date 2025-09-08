@@ -58,8 +58,8 @@ def get_latest_version(registry: Mapping[str, Type]) -> str:
 
 
 def load_schema_for_version(
-    version: str,
     base_package: str,
+    version: str,
 ) -> dict:
     """
     Load schema.json from the top-level <base_package>.vX_Y_Z package.
@@ -86,31 +86,3 @@ def load_schema_for_version(
     _SCHEMA_CACHE[cache_key] = schema
     
     return schema
-
-
-def get_cached_schema(schema_registry: Mapping[str, Type], template_name: str, version: str) -> dict:
-    """
-    Get cached schema for the new unified API.
-    Maps template names to base packages and uses existing caching mechanism.
-    
-    Args:
-        schema_registry: Registry mapping versions to model classes
-        template_name: Template name (e.g., "hyp-pytorch-job", "hyp-jumpstart-endpoint")
-        version: Schema version
-        
-    Returns:
-        Parsed schema dict
-    """
-    # Map template names to base packages
-    template_to_package = {
-        "hyp-pytorch-job": PYTORCH_SCHEMA,
-        "hyp-jumpstart-endpoint": JUMPSTART_SCHEMA,
-        "hyp-custom-endpoint": CUSTOM_SCHEMA,
-    }
-    
-    base_package = template_to_package.get(template_name)
-    if base_package is None:
-        raise ValueError(f"Unknown template name: {template_name}")
-    
-    # Use existing caching mechanism
-    return load_schema_for_version(version, base_package)
