@@ -3,7 +3,7 @@ import pkgutil
 import click
 from typing import Callable, Optional, Mapping, Type
 import sys
-from sagemaker.hyperpod.cli.common_utils import extract_version_from_args, get_latest_version, get_cached_schema
+from sagemaker.hyperpod.cli.common_utils import extract_version_from_args, get_latest_version, load_schema_for_version
 
 
 def generate_click_command(
@@ -19,13 +19,15 @@ def generate_click_command(
     if registry is not None and schema_registry is None:
         schema_registry = registry
     if schema_pkg is not None and template_name is None:
-        # Extract template name from schema_pkg
-        if "jumpstart" in schema_pkg:
-            template_name = "hyp-jumpstart-endpoint" 
-        elif "custom" in schema_pkg:
-            template_name = "hyp-custom-endpoint"
+        template_name = schema_pkg
+    elif template_name is not None and schema_pkg is None:
+        # Map template names to actual package names for schema loading
+        if template_name == "hyp-jumpstart-endpoint":
+            schema_pkg = "hyperpod_jumpstart_inference_template"
+        elif template_name == "hyp-custom-endpoint":
+            schema_pkg = "hyperpod_custom_inference_template"
         else:
-            template_name = schema_pkg
+            schema_pkg = template_name
             
     if schema_registry is None:
         raise ValueError("You must pass a schema_registry mapping version→Model")
@@ -59,14 +61,7 @@ def generate_click_command(
             domain = flat.to_domain()
             return func(name, namespace, version, domain)
 
-        # 2) LAZY SCHEMA LOADING: Load schema only at command execution, not at decorator time
-        # This prevents expensive template imports during CLI help generation
-        def get_schema_lazily():
-            return get_cached_schema(schema_registry, template_name, version)
-
-        schema = get_schema_lazily()
-        props = schema.get("properties", {})
-
+        # 2) inject click options from JSON Schema - LAZY LOADING like training
         json_flags = {
             "env": ("JSON object of environment variables, e.g. " '\'{"VAR1":"foo","VAR2":"bar"}\''),
             "dimensions": ("JSON object of dimensions, e.g. " '\'{"VAR1":"foo","VAR2":"bar"}\''),
@@ -75,30 +70,33 @@ def generate_click_command(
         }
 
         for flag_name, help_text in json_flags.items():
-            if flag_name in props:
-                wrapped_func = click.option(
-                    f"--{flag_name.replace('_', '-')}",
-                    callback=_parse_json_flag,
-                    type=str,
-                    default=None,
-                    help=help_text,
-                    metavar="JSON",
-                )(wrapped_func)
+            wrapped_func = click.option(
+                f"--{flag_name.replace('_', '-')}",
+                callback=_parse_json_flag,
+                type=str,
+                default=None,
+                help=help_text,
+                metavar="JSON",
+            )(wrapped_func)
 
-        # 3) auto-inject all schema.json fields
+        excluded_props = set([
+            "version",
+            "env", 
+            "dimensions",
+            "resources_limits",
+            "resources_requests",
+        ])
+
+        schema = load_schema_for_version(version, schema_pkg)
+        props = schema.get("properties", {})
         reqs = set(schema.get("required", []))
 
+        # reverse so flags appear in the same order as in schema.json
         for name, spec in reversed(list(props.items())):
-            if name in (
-                "version",
-                "env",
-                "dimensions",
-                "resources_limits",
-                "resources_requests",
-            ):
+            if name in excluded_props:
                 continue
 
-            # infer click type
+            # type inference
             if "enum" in spec:
                 ctype = click.Choice(spec["enum"])
             elif spec.get("type") == "integer":

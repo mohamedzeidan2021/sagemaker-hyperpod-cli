@@ -267,6 +267,9 @@ GROUP_SETTINGS = {
     # Other groups don't have default commands
 }
 
+# Derived constants from registry - single source of truth
+SUBGROUPS = list(COMMAND_REGISTRY['subgroups'].keys())
+
 
 def _load_command(module_path: str, function_name: str) -> Optional[click.Command]:
     """
@@ -446,9 +449,8 @@ class LazyTopLevelCLI(click.Group):
     
     def list_commands(self, ctx: click.Context) -> List[str]:
         """Return both subgroups and individual top-level commands."""
-        # Subgroups defined in CLI
-        subgroups = ['create', 'list', 'describe', 'delete', 'update', 
-                     'list-pods', 'get-logs', 'invoke', 'get-operator-logs', 'exec']
+        # Subgroups from registry - single source of truth
+        subgroups = SUBGROUPS
         
         # Individual top-level commands from registry
         top_level_commands = list(COMMAND_REGISTRY.get('top_level', {}).keys())
@@ -480,12 +482,10 @@ class LazyTopLevelCLI(click.Group):
         """
         commands = []
         
-        # Add subgroups from registry
-        subgroups = ['create', 'list', 'describe', 'delete', 'update', 
-                     'list-pods', 'get-logs', 'invoke', 'get-operator-logs', 'exec']
+        # Add subgroups from registry - single source of truth
         subgroup_help = COMMAND_REGISTRY.get('subgroups', {})
         
-        for subgroup in subgroups:
+        for subgroup in SUBGROUPS:
             help_text = subgroup_help.get(subgroup, f'{subgroup.title()} commands')
             commands.append((subgroup, help_text))
         

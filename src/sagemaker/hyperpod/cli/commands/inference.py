@@ -4,8 +4,15 @@ from typing import Optional
 
 # Import needed for schema-based command generation  
 from sagemaker.hyperpod.cli.inference_utils import generate_click_command
-from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY as JS_REG
-from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY as C_REG
+
+# Lazy registry loading - import only when needed
+def get_js_registry():
+    from hyperpod_jumpstart_inference_template.registry import SCHEMA_REGISTRY
+    return SCHEMA_REGISTRY
+
+def get_custom_registry():
+    from hyperpod_custom_inference_template.registry import SCHEMA_REGISTRY
+    return SCHEMA_REGISTRY
 
 # Lightweight imports only - heavy SDK imports moved inside functions
 from sagemaker.hyperpod.common.telemetry.telemetry_logging import (
@@ -26,7 +33,7 @@ from sagemaker.hyperpod.common.cli_decorators import handle_cli_exceptions
 )
 @click.option("--version", default="1.0", help="Schema version to use")
 @generate_click_command(
-    schema_registry=JS_REG,
+    schema_registry=get_js_registry(),
     template_name="hyp-jumpstart-endpoint",
 )
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_js_endpoint_cli")
@@ -51,7 +58,7 @@ def js_create(namespace, version, js_endpoint):
 )
 @click.option("--version", default="1.0", help="Schema version to use")
 @generate_click_command(
-    schema_registry=C_REG,
+    schema_registry=get_custom_registry(),
     template_name="hyp-custom-endpoint",
 )
 @_hyperpod_telemetry_emitter(Feature.HYPERPOD_CLI, "create_custom_endpoint_cli")
