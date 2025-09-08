@@ -11,9 +11,6 @@ CUSTOM_COMMAND = "hyp-custom-endpoint"
 PYTORCH_SCHEMA="hyperpod_pytorch_job_template"
 PYTORCH_COMMAND="hyp-pytorch-job"
 
-# Schema cache: (base_package, version) -> loaded schema dict
-_SCHEMA_CACHE = {}
-
 
 def extract_version_from_args(registry: Mapping[str, Type], schema_pkg: str, default: str) -> str:
     if "--version" not in sys.argv:
@@ -63,16 +60,7 @@ def load_schema_for_version(
 ) -> dict:
     """
     Load schema.json from the top-level <base_package>.vX_Y_Z package.
-    Uses caching to avoid expensive re-imports: first load ~400ms, subsequent loads instant.
     """
-    # Create cache key
-    cache_key = (base_package, version)
-    
-    # Check if schema is already cached
-    if cache_key in _SCHEMA_CACHE:
-        return _SCHEMA_CACHE[cache_key]
-    
-    # Schema not cached, load it (this is the expensive operation)
     ver_pkg = f"{base_package}.v{version.replace('.', '_')}"
     raw = pkgutil.get_data(ver_pkg, "schema.json")
     if raw is None:
@@ -81,8 +69,5 @@ def load_schema_for_version(
             f"(looked in package {ver_pkg})"
         )
     
-    # Parse JSON and cache the result
     schema = json.loads(raw)
-    _SCHEMA_CACHE[cache_key] = schema
-    
     return schema
