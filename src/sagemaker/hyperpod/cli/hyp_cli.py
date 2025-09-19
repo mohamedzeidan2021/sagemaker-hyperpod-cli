@@ -1,55 +1,14 @@
 import click
-import yaml
-import json
-import os
-import subprocess
-from pydantic import BaseModel, ValidationError, Field
-from typing import Optional, Union
-from importlib.metadata import version, PackageNotFoundError
+from typing import Union
 
-from sagemaker.hyperpod.cli.commands.cluster import list_cluster, set_cluster_context, get_cluster_context, \
-    get_monitoring
-from sagemaker.hyperpod.cli.commands.cluster_stack import create_cluster_stack, describe_cluster_stack, \
-    list_cluster_stacks, update_cluster, delete_cluster_stack
-from sagemaker.hyperpod.cli.commands.training import (
-    pytorch_create,
-    list_jobs,
-    pytorch_describe,
-    pytorch_delete,
-    pytorch_list_pods,
-    pytorch_get_logs,
-    pytorch_get_operator_logs,
-    pytorch_exec,
-)
-from sagemaker.hyperpod.cli.commands.inference import (
-    js_create,
-    custom_create,
-    custom_invoke,
-    js_list,
-    custom_list,
-    js_describe,
-    custom_describe,
-    js_delete,
-    custom_delete,
-    js_list_pods,
-    custom_list_pods,
-    js_get_logs,
-    custom_get_logs,
-    js_get_operator_logs,
-    custom_get_operator_logs,
-)
-
-from sagemaker.hyperpod.cli.commands.init import (
-    init,
-    reset,
-    configure,
-    validate,
-    _default_create
-)
+# Import LazyCommand for deferred command loading
+from sagemaker.hyperpod.cli.lazy_command import LazyCommand
 
 
 @click.group(context_settings={'max_content_width': 200})
 def get_package_version(package_name):
+    # Defer heavy import until actually needed
+    from importlib.metadata import version, PackageNotFoundError
     try:
         return version(package_name)
     except PackageNotFoundError:
@@ -95,125 +54,284 @@ class CLICommand(click.Group):
         return super().parse_args(ctx, args)
 
 
+# Create command groups using standard Click groups (LazyGroup removed for simplicity)
 @cli.group(cls=CLICommand, default_cmd='_default_create')
 def create():
-    """
-    Create endpoints, pytorch jobs or cluster stacks.
+    """Create endpoints, pytorch jobs or cluster stacks.
 
-    If only used as 'hyp create' without [OPTIONS] COMMAND [ARGS] during init experience,
-    then it will validate configuration and render template files for deployment.
-    The generated files in the run directory can be used for actual deployment
-    to SageMaker HyperPod clusters or CloudFormation stacks.
+If only used as 'hyp create' without [OPTIONS] COMMAND [ARGS] during init experience,
+then it will validate configuration and render template files for deployment.
+The generated files in the run directory can be used for actual deployment
+to SageMaker HyperPod clusters or CloudFormation stacks.
 
-    Prerequisites for directly calling 'hyp create':
-    - Must be run in a directory initialized with 'hyp init'
-    - config.yaml and the appropriate template file must exist
-    """
+Prerequisites for directly calling 'hyp create':
+- Must be run in a directory initialized with 'hyp init'
+- config.yaml and the appropriate template file must exist"""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group()
 def list():
     """List endpoints, pytorch jobs or cluster stacks."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group()
 def describe():
     """Describe endpoints, pytorch jobs or cluster stacks."""
     pass
 
-@cli.group(cls=CLICommand)
+@cli.group()
 def update():
     """Update an existing HyperPod cluster configuration."""
     pass
 
-@cli.group(cls=CLICommand)
+@cli.group()
 def delete():
     """Delete endpoints or pytorch jobs."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group(name='list-pods')
 def list_pods():
     """List pods for endpoints or pytorch jobs."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group(name='get-logs')
 def get_logs():
     """Get pod logs for endpoints or pytorch jobs."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group()
 def invoke():
     """Invoke model endpoints."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group(name='get-operator-logs')
 def get_operator_logs():
     """Get operator logs for endpoints."""
     pass
 
-
-@cli.group(cls=CLICommand)
+@cli.group(name='exec')
 def exec():
     """Execute commands in pods for endpoints or pytorch jobs."""
     pass
 
 
-cli.add_command(init)
-cli.add_command(reset)
-cli.add_command(configure)
-cli.add_command(validate)
+# Add initialization commands using lazy loading
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.init:init',
+    name='init',
+    help='Initialize a new HyperPod project directory.'
+))
 
-create.add_command(pytorch_create)
-create.add_command(js_create)
-create.add_command(custom_create)
-_default_create.hidden = True
-create.add_command(_default_create)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.init:reset',
+    name='reset',
+    help='Reset the current HyperPod project configuration.'
+))
 
-list.add_command(list_jobs)
-list.add_command(js_list)
-list.add_command(custom_list)
-list.add_command(list_cluster_stacks)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.init:configure',
+    name='configure',
+    help='Configure HyperPod CLI settings.'
+))
 
-describe.add_command(pytorch_describe)
-describe.add_command(js_describe)
-describe.add_command(custom_describe)
-describe.add_command(describe_cluster_stack)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.init:validate',
+    name='validate',
+    help='Validate the current HyperPod project configuration.'
+))
 
-update.add_command(update_cluster)
+# Add cluster management commands using lazy loading
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster:list_cluster',
+    name='list-cluster',
+    help='List available HyperPod clusters.'
+))
 
-delete.add_command(pytorch_delete)
-delete.add_command(js_delete)
-delete.add_command(custom_delete)
-delete.add_command(delete_cluster_stack)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster:set_cluster_context',
+    name='set-cluster-context',
+    help='Set the current cluster context.'
+))
 
-list_pods.add_command(pytorch_list_pods)
-list_pods.add_command(js_list_pods)
-list_pods.add_command(custom_list_pods)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster:get_cluster_context',
+    name='get-cluster-context',
+    help='Get the current cluster context.'
+))
 
-get_logs.add_command(pytorch_get_logs)
-get_logs.add_command(js_get_logs)
-get_logs.add_command(custom_get_logs)
+cli.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster:get_monitoring',
+    name='get-monitoring',
+    help='Get cluster monitoring information.'
+))
 
-get_operator_logs.add_command(pytorch_get_operator_logs)
-get_operator_logs.add_command(js_get_operator_logs)
-get_operator_logs.add_command(custom_get_operator_logs)
+# Add training commands to create group using lazy loading
+create.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_create',
+    name='hyp-pytorch-job'
+))
 
-invoke.add_command(custom_invoke)
-invoke.add_command(custom_invoke, name="hyp-jumpstart-endpoint")
+# Add inference commands to create group using lazy loading
+create.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_create',
+    name='hyp-jumpstart-endpoint'
+))
 
-cli.add_command(list_cluster)
-cli.add_command(set_cluster_context)
-cli.add_command(get_cluster_context)
-cli.add_command(get_monitoring)
-# cli.add_command(create_cluster_stack) # Not supported yet
+create.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_create',
+    name='hyp-custom-endpoint'
+))
 
-exec.add_command(pytorch_exec)
+# Add default create command for init experience
+_default_create_cmd = LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.init:_default_create',
+    name='_default_create'
+)
+_default_create_cmd.hidden = True
+create.add_command(_default_create_cmd)
+
+# Add training commands to list group using lazy loading
+list.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:list_jobs',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to list group using lazy loading
+list.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_list',
+    name='hyp-jumpstart-endpoint'
+))
+
+list.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_list',
+    name='hyp-custom-endpoint'
+))
+
+# Add cluster stack commands to list group using lazy loading
+list.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster_stack:list_cluster_stacks',
+    name='cluster-stacks'
+))
+
+# Add training commands to describe group using lazy loading
+describe.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_describe',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to describe group using lazy loading
+describe.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_describe',
+    name='hyp-jumpstart-endpoint'
+))
+
+describe.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_describe',
+    name='hyp-custom-endpoint'
+))
+
+# Add cluster stack commands to describe group using lazy loading
+describe.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster_stack:describe_cluster_stack',
+    name='cluster-stack'
+))
+
+# Add cluster update command using lazy loading
+update.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster_stack:update_cluster',
+    name='cluster'
+))
+
+# Add training commands to delete group using lazy loading
+delete.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_delete',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to delete group using lazy loading
+delete.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_delete',
+    name='hyp-jumpstart-endpoint'
+))
+
+delete.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_delete',
+    name='hyp-custom-endpoint'
+))
+
+# Add cluster stack commands to delete group using lazy loading
+delete.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.cluster_stack:delete_cluster_stack',
+    name='cluster-stack'
+))
+
+# Add training commands to list_pods group using lazy loading
+list_pods.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_list_pods',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to list_pods group using lazy loading
+list_pods.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_list_pods',
+    name='hyp-jumpstart-endpoint'
+))
+
+list_pods.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_list_pods',
+    name='hyp-custom-endpoint'
+))
+
+# Add training commands to get_logs group using lazy loading
+get_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_get_logs',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to get_logs group using lazy loading
+get_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_get_logs',
+    name='hyp-jumpstart-endpoint'
+))
+
+get_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_get_logs',
+    name='hyp-custom-endpoint'
+))
+
+# Add training commands to get_operator_logs group using lazy loading
+get_operator_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_get_operator_logs',
+    name='hyp-pytorch-job'
+))
+
+# Add inference commands to get_operator_logs group using lazy loading
+get_operator_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:js_get_operator_logs',
+    name='hyp-jumpstart-endpoint'
+))
+
+get_operator_logs.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_get_operator_logs',
+    name='hyp-custom-endpoint'
+))
+
+# Add inference commands to invoke group using lazy loading
+invoke.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_invoke',
+    name='hyp-custom-endpoint'
+))
+
+invoke.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.inference:custom_invoke',
+    name='hyp-jumpstart-endpoint'
+))
+
+# Add training commands to exec group using lazy loading
+exec.add_command(LazyCommand(
+    import_name='sagemaker.hyperpod.cli.commands.training:pytorch_exec',
+    name='hyp-pytorch-job'
+))
 
 if __name__ == "__main__":
     cli()
