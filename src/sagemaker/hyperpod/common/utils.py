@@ -1,9 +1,5 @@
-from kubernetes import client, __version__ as kubernetes_client_version
 from pydantic import ValidationError
-from kubernetes.client.exceptions import ApiException
-from kubernetes import config
 import re
-import boto3
 import json
 from typing import List, Tuple, Optional
 import logging
@@ -11,18 +7,16 @@ import os
 import subprocess
 import yaml
 import click
-from kubernetes.config import (
-    KUBE_CONFIG_DEFAULT_LOCATION,
-)
 # Remove enum-based imports - now using template-agnostic approach
 
 EKS_ARN_PATTERN = r"arn:aws:eks:([\w-]+):\d+:cluster/([\w-]+)"
 CLIENT_VERSION_PATTERN = r'^\d+\.\d+\.\d+$'
 
-KUBE_CONFIG_PATH = os.path.expanduser(KUBE_CONFIG_DEFAULT_LOCATION)
-
-
 def get_default_namespace():
+    # Import heavy dependencies only when this function is called
+    from kubernetes import config
+    from kubernetes.config import KUBE_CONFIG_DEFAULT_LOCATION
+    
     _, active_context = config.list_kube_config_contexts()
 
     if active_context and "context" in active_context:
@@ -53,6 +47,9 @@ def handle_exception(e: Exception, name: str, namespace: str,
         operation_type: Operation type (legacy parameter, kept for backward compatibility)
         resource_type: Resource type (legacy parameter, kept for backward compatibility)
     """
+    # Import heavy dependencies only when this function is called
+    from kubernetes.client.exceptions import ApiException
+    
     if isinstance(e, ApiException):
         if e.status == 401:
             raise Exception(f"Credentials unauthorized.") from e
@@ -100,6 +97,9 @@ def get_region_from_eks_arn(arn: str) -> str:
 
 
 def get_jumpstart_model_instance_types(model_id, region) -> List[str]:
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     client = boto3.client("sagemaker", region_name=region)
 
     response = client.describe_hub_content(
@@ -113,6 +113,9 @@ def get_jumpstart_model_instance_types(model_id, region) -> List[str]:
 
 
 def get_cluster_instance_types(cluster, region) -> set:
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     instance_types = set({})
 
     sagemaker_client = boto3.client("sagemaker", region_name=region)
@@ -213,6 +216,12 @@ def set_eks_context(
         context_name (str): The name of the context to set as current.
         namespace (str): The name of the namespace to use.
     """
+    # Import heavy dependencies only when this function is called
+    from kubernetes import config
+    from kubernetes.config import KUBE_CONFIG_DEFAULT_LOCATION
+    
+    KUBE_CONFIG_PATH = os.path.expanduser(KUBE_CONFIG_DEFAULT_LOCATION)
+    
     with open(KUBE_CONFIG_PATH, "r") as file:
         kubeconfig = yaml.safe_load(file)
 
@@ -245,6 +254,9 @@ def set_cluster_context(
     region: Optional[str] = None,
     namespace: Optional[str] = None,
 ):
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     logger = logging.getLogger(__name__)
     logger = setup_logging(logger)
 
@@ -268,6 +280,10 @@ def set_cluster_context(
         logger.info(f"Successfully set current context as: {cluster_name}")
 
 def get_cluster_context():
+    # Import heavy dependencies only when this function is called
+    from kubernetes import config
+    from kubernetes.config import KUBE_CONFIG_DEFAULT_LOCATION
+    
     try:
         current_context = config.list_kube_config_contexts()[1]["context"]["cluster"]
         return current_context
@@ -279,6 +295,9 @@ def get_cluster_context():
 def list_clusters(
     region: Optional[str] = None,
 ):
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     client = boto3.client("sagemaker", region_name=region)
     clusters = client.list_clusters()
 
@@ -296,6 +315,10 @@ def list_clusters(
     return {"Eks": eks_clusters, "Slurm": slurm_clusters}
 
 def get_current_cluster():
+    # Import heavy dependencies only when this function is called
+    import boto3
+    from kubernetes.config import KUBE_CONFIG_DEFAULT_LOCATION
+    
     current_context = get_cluster_context()
     region = get_region_from_eks_arn(current_context)
 
@@ -314,6 +337,9 @@ def get_current_cluster():
     )
 
 def get_aws_default_region():
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     try:
         return boto3.Session().region_name
     except:
@@ -337,6 +363,9 @@ def create_boto3_client(service_name: str, region_name: Optional[str] = None, **
     Returns:
         boto3 client instance
     """
+    # Import heavy dependencies only when this function is called
+    import boto3
+    
     return boto3.client(service_name, region_name=region_name or boto3.session.Session().region_name, **kwargs)
 
 def region_to_az_ids(region_code: str):
@@ -513,6 +542,8 @@ def verify_kubernetes_version_compatibility(logger) -> bool:
     Returns:
         bool: True if versions are compatible, False otherwise
     """
+    # Import heavy dependencies only when this function is called
+    from kubernetes import client, __version__ as kubernetes_client_version
 
     try:
         version_api = client.VersionApi()
